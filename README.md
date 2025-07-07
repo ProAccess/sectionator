@@ -1,4 +1,4 @@
-# <span style="font-style:normal; font-weight:normal; font-size:1.0em; "></span>Heading numbering utility
+# Heading numbering utility
 
 The *sectionator.lua* Pandoc filter enables convenient section heading
 numbering and with added control. You can specify options within the
@@ -30,12 +30,12 @@ re-enabled) with the `numbering` parameter as follows:
 
 You’ll find additional options below.
 
-## <span style="font-style:normal; font-weight:normal; font-size:1.0em; "></span>For even more flexibility…
+## For even more flexibility…
 
 In addition to being able to specify heading parameters globally (with
 the YAML header statement *sectionator*), you can also further specify
 them for each document *type* being output by prefacing a parameter with
-the document type and period For example, below we specify we wish the
+the document type and period. For example, below we specify we wish the
 word “Section” to appear before the heading number and that the section
 number be separated from the heading with a colon and two spaces, but
 *only* for html documents.
@@ -48,7 +48,7 @@ or following a heading within curly braces:
 
 `My Heading{html.hdg_label="Section" html.hdg_sep=":__"}`
 
-## <span style="font-style:normal; font-weight:normal; font-size:1.0em; "></span>Summary of options
+## Summary of options
 
 - numbering – Heading numbering: on/true, off/false. Turns numbering on
   or off.
@@ -62,7 +62,7 @@ or following a heading within curly braces:
 - keep_with_next – (For latex/pdf.) Move heading to next page if within
   n lines of bottom. Prevents orphans.
 
-## <span style="font-style:normal; font-weight:normal; font-size:1.0em; "></span>Document formats supported
+## Document formats supported
 
 It is assumed you already have installed Pandoc. If not, information is
 provided [here](https://pandoc.org/installing.html).
@@ -79,7 +79,7 @@ markdown:
 - latex — For typesetting and pdf conversion.
 - epub — For commonly available e-published format
 
-## <span style="font-style:normal; font-weight:normal; font-size:1.0em; "></span>Parameter details
+## Parameter details
 
 | Parameter | Notes | Default | Examples |
 |:---|:---|:---|:---|
@@ -91,7 +91,7 @@ markdown:
 | hdg_sep | Separator between heading section number and heading | `:__` (colon and two spaces) | `:_`, `_--_`, `___`, etc. |
 | keep_with_next | (For latex/pdf docs only.) Prevents headings from being orphaned when near page bottom. If you find a heading alone, it’s often because latex encountered an image(s) or other situation that complicated optimum page composition. In such case, use *keep_with_next* and specify a number of lines exceeding the equivalent number of lines between the heading and page bottom. | 4 | If near page bottom, e.g., `keep_with_next=5`. If farther up, `keep_with_next=30` |
 
-## <span style="font-style:normal; font-weight:normal; font-size:1.0em; "></span>Invoking filter from Pandoc
+## Invoking filter from Pandoc
 
 This filter can be invoked on the command line with the “–lua-filter”
 option, e.g., “--lua-filter=sectionator.lua”. An example might be
@@ -110,7 +110,7 @@ output:
 ---
 </code></pre>
 
-## <span style="font-style:normal; font-weight:normal; font-size:1.0em; "></span>Include this package for orphan protection
+## Include this package for orphan protection
 
 For Pandoc conversion into Latex and pdf, this package statement should
 be included in the latex template file to enable the keep_with_next
@@ -118,6 +118,6 @@ option.
 
 `\usepackage{needspace}`
 
-#### <span style="font-style:normal; font-weight:normal; font-size:1.0em; "></span>I hope you find some of this useful. I welcome any corrections, feedback and suggestions!
+#### I hope you find some of this useful. I welcome any corrections, feedback and suggestions!
 
 George

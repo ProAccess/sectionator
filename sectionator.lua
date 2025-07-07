@@ -15,7 +15,8 @@ local valid_hdg_attr_names =
         "hdg_label", -- Custom heading preface, e.g., "Section", "Appendix", etc.
         "hdg_label_size", -- Label font size
         "hdg_label_style", -- Label style
-        "hdg_sep" -- Heading separator between number and heading
+        "hdg_sep", -- Heading separator between number and heading
+        "hdg_targ" -- Heading link target
     }
 local hdg_params = {} -- Contains heading parameters {["param"],{default, global, this}}
 local default_i = 1 -- 'Default' column of heading params table
@@ -36,6 +37,7 @@ local prev_numbering = false -- Allows latex heading numbering to be set only if
 local hdg_sep = ""
 local label_sep1 -- 1st label separater part will have same style as label
 local label_sep2 -- 2nd label separater part will have same style as heading
+local hdg_targ -- Heading link target
 
 -- Heading text lists
 local section_numbers = {-1, 0, 1, 2, 3, 4, 5} -- Follow Latex conventions
@@ -121,6 +123,30 @@ local hdg_hits = 0 -- Counter allows detection of first hit to set heading numbe
 
 -- META FUNCTION — Meta stores variables used in headings filter
 function Meta(meta)
+    print("\n=== SECTIONATOR DEBUG START ===")
+    
+    -- Try to get format-specific settings first, then fall back to global
+    local sectionatorSettings, settingsSource = extractSectionatorSettings(meta)
+    
+    print("Using sectionator settings from:", settingsSource)
+    
+    if sectionatorSettings then
+        print("sectionator type:", type(sectionatorSettings))
+        if type(sectionatorSettings) == "table" then
+            print("sectionator.numbering:", sectionatorSettings.numbering, type(sectionatorSettings.numbering))
+            print("sectionator.hdg_label:", sectionatorSettings.hdg_label)
+            print("sectionator.hdg_sep:", sectionatorSettings.hdg_sep)
+            print("sectionator.hdg_label_size:", sectionatorSettings.hdg_label_size)
+            print("sectionator.hdg_label_style:", sectionatorSettings.hdg_label_style)
+        else
+            print("sectionator value:", tostring(sectionatorSettings))
+        end
+    else
+        print("No sectionator found in meta")
+    end   
+    print("Raw meta.toc:", meta.toc, type(meta.toc))
+    print("=== SECTIONATOR DEBUG END ===\n")
+
     local err = ""
     local i
     local j
@@ -137,41 +163,137 @@ function Meta(meta)
         ["hdg_label"] = {"", nil, nil},
         ["hdg_label_size"] = {"normal", nil, nil},
         ["hdg_label_style"] = {"normal", nil, nil},
-        ["hdg_sep"] = {"___", nil, nil}
+        ["hdg_sep"] = {"_--_", nil, nil},
+        ["hdg_targ"] = {nil, nil, nil}
     }
 
     reset_nums_below(1) -- Reset all numbers above section level
     reset_hdg_params() -- Init variables at this level before next headings
     doctype_overrides = {} -- Clear record of doc-type-specific overrides
-    -- ptr = 1 -- Init pointer
-    if meta.sectionator ~= nil then
-        local glParStr = stringify(meta.sectionator)
-        glParStr = string.gsub(glParStr, "“", '"') -- Clean of any Pandoc open quotes that disables standard expressions
-        glParStr = string.gsub(glParStr, "”", '"') -- Clean of any Pandoc open quotes that disable standard expressions
-        repeat -- Gather any meta-specified global sectionator parameters
-            i, j = string.find(glParStr, "[%a%:%_]+%s*=", ptr) -- Look for param name
-            if i == nil then
-                done = true
-                break
+
+    -- MODIFIED: Process either format-specific or global settings
+    if sectionatorSettings ~= nil then
+        -- NEW: Check if sectionator is an object (table) or string
+        if type(sectionatorSettings) == "table" then
+            -- First, check if it's actually a string split into array elements
+            local isStringArray = true
+            local concatenatedString = ""
+
+            -- Check if all elements are strings and can be concatenated
+            for k, v in pairs(sectionatorSettings) do
+                if type(k) == "number" then
+                    concatenatedString = concatenatedString .. stringify(v)
+                elseif type(k) == "string" then
+                    -- This is a proper object format
+                    isStringArray = false
+                    break
+                end
             end
-            key = trim(string.sub(glParStr, i, j - 1))
-            ptr = j
-            value = string.match(string.sub(glParStr, j + 1, j + 50),
-                                 "[%%%-%+%_%w%.%:%s]+")
-            if value == nil then
-                done = true
-                break
+
+            if isStringArray and #concatenatedString > 0 then
+                -- MULTILINE STRING FORMAT: Treat as concatenated string
+                print("Processing sectionator as multiline string format")
+                local glParStr = concatenatedString
+                glParStr = string.gsub(glParStr, "“", '"') -- Clean of any Pandoc open quotes that disables standard expressions
+                glParStr = string.gsub(glParStr, "”", '"') -- Clean of any Pandoc open quotes that disable standard expressions
+                repeat -- Gather any meta-specified global sectionator parameters
+                    i, j = string.find(glParStr, "[%a%.%_]+%s*=", ptr) -- Look for param name
+                    if i == nil then
+                        done = true
+                        break
+                    end
+                    key = trim(string.sub(glParStr, i, j - 1))
+                    ptr = j
+                    value = string.match(string.sub(glParStr, j + 1, j + 50),
+                                         "[%%%-%+%_%w%.%:%s]+")
+                    if value == nil then
+                        done = true
+                        break
+                    end
+                    ptr = j + 1
+                    err = recordParam(key, value, global_i, doctype_overrides) -- Save information
+                    if #err > 0 then -- If error
+                        err_msg = err_msg .. err .. "\n"
+                    end
+                until done
+            else
+                -- OBJECT FORMAT: Handle as key-value pairs
+                print("Processing sectionator as object format")
+                for key, value in pairs(sectionatorSettings) do
+                    -- FIXED: Only process string keys, ignore numeric indices
+                    if type(key) == "string" then
+                        local stringValue = stringify(value)
+                        err = recordParam(key, stringValue, global_i,
+                                          doctype_overrides)
+                        if #err > 0 then
+                            err_msg = err_msg .. err .. "\n"
+                        end
+                    else
+                        print("Skipping numeric key:", key, "with value:",
+                              stringify(value))
+                    end
+                end
             end
-            ptr = j + 1
-            err = recordParam(key, value, global_i, doctype_overrides) -- Save information
-            if #err > 0 then -- If error
-                err_msg = err_msg .. err .. "\n"
-            end
-        until done
+        else
+            -- STRING FORMAT: Handle as comma-separated string (legacy format)
+            print("Processing sectionator as string format")
+            local glParStr = stringify(sectionatorSettings)
+            glParStr = string.gsub(glParStr, string.char(226, 128, 156), '"') -- Left curly quote (U+201C)
+            glParStr = string.gsub(glParStr, string.char(226, 128, 157), '"') -- Right curly quote (U+201D)
+            repeat -- Gather any meta-specified global sectionator parameters
+                i, j = string.find(glParStr, "[%a%.%_]+%s*=", ptr) -- Look for param name
+                if i == nil then
+                    done = true
+                    break
+                end
+                key = trim(string.sub(glParStr, i, j - 1))
+                ptr = j
+                value = string.match(string.sub(glParStr, j + 1, j + 50),
+                                     "[%%%-%+%_%w%.%:%s]+")
+                if value == nil then
+                    done = true
+                    break
+                end
+                ptr = j + 1
+                err = recordParam(key, value, global_i, doctype_overrides) -- Save information
+                if #err > 0 then -- If error
+                    err_msg = err_msg .. err .. "\n"
+                end
+            until done
+        end
+    else
+        print("No 'sectionator' settings found in Meta section.")
     end
+
     doctype_override(global_i, doctype_overrides) -- Override any parameters where doc-specific override indicated
     return meta
 end
+
+-- *************************************************************************
+-- Extract sectionator settings from format-specific section first, then global
+    function extractSectionatorSettings(meta)
+        local settings = {}
+        local currentFormat = string.match(FORMAT, "[%a]+") -- e.g., html, pdf, docx
+        local formatKey = currentFormat .. "_document" -- e.g., html_document, pdf_document
+        
+        print("Current format:", currentFormat, "Format key:", formatKey)
+        
+        -- First try to get settings from format-specific section
+        if meta.output and meta.output[formatKey] and meta.output[formatKey].sectionator then
+            print("Found format-specific sectionator settings for", formatKey)
+            settings = meta.output[formatKey].sectionator
+            return settings, "format-specific"
+        end
+        
+        -- Fall back to global settings
+        if meta.sectionator then
+            print("Using global sectionator settings")
+            return meta.sectionator, "global"
+        end
+        
+        print("No sectionator settings found")
+        return nil, "none"
+    end
 
 -- *************************************************************************
 -- Reset these variables before next heading
@@ -190,7 +312,7 @@ end
 -- *************************************************************************
 -- Intercept headers and add code to ensure will not be orphaned. 
 function Header(hdg)
-
+    local results
     local sec_type -- section, subsection, etc.
     local r = ""
     local name = ""
@@ -385,25 +507,37 @@ function Header(hdg)
     end
 
     -- *************************************************************************
-    -- HTML/Epub/markdown documents prep
-    if (FORMAT:match "html" or FORMAT:match "epub" or FORMAT:match "gfm" or
-        FORMAT:match "mark.*") then -- For html or markdown documents
-        label_sep2 = string.gsub(label_sep2, " ", "&nbsp;") -- Enables more than one space char in separator
-        atr = {id = hdg.identifier}
-        results = pandoc.RawInline('html',
-                                   '<span style="' .. hdg_label_html_style ..
-                                       '">' .. hdg_lbl .. hdg_nm .. label_sep1 ..
-                                       '</span>' .. label_sep2 .. hdg_text)
-        if (#err_msg > 1) then
-            results = "<span style='color:red'>ERROR IN IMAGE INFORMATION - " ..
-                          err_msg .. "</span>\n\n" .. results
-        end
-        results = pandoc.Header(level, results, hdg.attr)
+-- HTML/Epub/markdown documents prep
+if (FORMAT:match "html" or FORMAT:match "epub" or FORMAT:match "gfm" or
+FORMAT:match "mark.*") then -- For html or markdown documents
+label_sep2 = string.gsub(label_sep2, " ", "&nbsp;") -- Enables more than one space char in separator
+
+-- First, build the complete HTML string for the header content
+local html_content = '<span style="' .. hdg_label_html_style ..
+                           '">' .. hdg_lbl .. hdg_nm .. label_sep1 ..
+                           '</span>' .. label_sep2 .. hdg_text
+
+if (#err_msg > 1) then
+    -- Prepend the error message to the HTML string
+    html_content = "<span style='color:red'>ERROR IN HEADING INFORMATION - " ..
+                  err_msg .. "</span><br>" .. html_content
+end
+
+-- Now, create the Pandoc object from the final string.
+-- The content of a Header must be a list of inlines.
+local header_inlines = {pandoc.RawInline('html', html_content)}
+
+results = pandoc.Header(level, header_inlines, hdg.attr)
 
         -- *************************************************************************
         -- Latex/PDF documents prep
-    elseif FORMAT:match "latex" then -- For Latex/PDF documents
-        label_sep2 = string.gsub(label_sep2, " ", "~") -- Preserve space chars in latex
+    elseif (numbering and FORMAT:match "latex") then -- For Latex/PDF documents
+        if string.find(label_sep2, "%-%-%-") then  -- Look for three consecutive hyphens
+            label_sep2 = label_sep2:gsub("---", "\\textemdash{}") -- 3 hyphens to Em-dash
+        end
+        if string.find(label_sep2, "%-%-") then  -- Look for two consecutive hyphens
+            label_sep2 = label_sep2:gsub("--", "\\textendash{}") -- 2 hyphens to En-dash   
+        end     
         if hdg.level < 2 then -- Get header level to determine latex level name
             sec_type = "section"
         elseif hdg.level == 2 then
@@ -463,8 +597,8 @@ function Header(hdg)
 end
 
 -- **************************************************************************************************
--- Examine param name for any doc-type constraint. If no constraint, simply record into table.
--- If constraint indicated, record in special table used later to override.
+-- Examine param name for any format prefix. If not specified, simply record into table.
+-- If fomrat prefix indicated, record in special table used later to override.
 function recordParam(name, value, lev, overrides)
     local nam = ""
     local i
@@ -474,10 +608,10 @@ function recordParam(name, value, lev, overrides)
     local err = ""
     local alt_doctype = doctype -- Accommodates ability to recognize that pdf docs are processed via latex
     if doctype == "latex" then alt_doctype = "pdf" end
-    i, j = string.find(name, ":[_%a]+$") -- Get param without doc constraint
+    i, j = string.find(name, "%.[_%a]+$") -- Get param without doc constraint (CHANGED : to %.)
     if i ~= nil then -- If constraint indicated
         nam = string.sub(name, i + 1, j) -- Get name without constraint
-        i, j = string.find(name, "[_%a]+:") -- Get doc type constraint
+        i, j = string.find(name, "[_%a]+%.") -- Get doc type constraint (CHANGED : to %.)
         if i ~= nil then -- If doc type prefix indicated
             doctyp = string.sub(name, i, j - 1)
             if verify_entry(doctyp, doctypes) then -- Ensure doctype prefix valid
